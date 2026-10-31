@@ -1,0 +1,23 @@
+# Python virtual environment
+sign/
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Editor settings
+.vscode/
+
+# Original videos (if any remain)
+data/raw/train/raw_videos/
+data/raw/validation/raw_videos/
+data/raw/test/raw_videos/
+
+# Temporary logs
+*.log
+
+# Empty extraction error logs
+data/processed/*/extraction_errors.txt
