@@ -16,20 +16,26 @@ class How2SignDataset(Dataset):
         with np.load(self.files[idx], allow_pickle=False) as data:
             left_hand = data["left_hand"]   # (T, 21, 3)
             right_hand = data["right_hand"] # (T, 21, 3)
-            pose = data["pose"]             # (T, 25, 3) 
+            pose = data["pose"]             # (T, 25, 3)
             face = data["face"]             # (T, 40, 3)
             text = str(data["text"].item())
 
-        if self.config == "hands":
-            features = np.concatenate([left_hand, right_hand], axis=2) 
-        elif self.config == "hands_pose":
-            features = np.concatenate([left_hand, right_hand, pose], axis=2) 
-        else: # full
-            features = np.concatenate([left_hand, right_hand, pose, face], axis=2) 
+        # Flatten the (landmarks, 3) dimension into a single feature vector per channel
+        T = left_hand.shape[0]
+        left_flat = left_hand.reshape(T, -1)   # (T, 63)
+        right_flat = right_hand.reshape(T, -1) # (T, 63)
+        pose_flat = pose.reshape(T, -1)        # (T, 75)
+        face_flat = face.reshape(T, -1)        # (T, 120)
 
-        features = features.reshape(features.shape[0], -1)
+        # Concatenate the flattened arrays along the feature axis (axis=1)
+        if self.config == "hands":
+            features = np.concatenate([left_flat, right_flat], axis=1) # 126
+        elif self.config == "hands_pose":
+            features = np.concatenate([left_flat, right_flat, pose_flat], axis=1) # 201
+        else: # full
+            features = np.concatenate([left_flat, right_flat, pose_flat, face_flat], axis=1) # 321
         
-        T = features.shape[0]
+        # Temporal padding to max_frames
         if T < self.max_frames:
             padding = np.zeros((self.max_frames - T, features.shape[1]))
             features = np.vstack((features, padding))

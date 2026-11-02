@@ -5,6 +5,9 @@ from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 
 class HFSignTokenizer:
     def __init__(self, vocab_size=5000, max_seq_len=50):
@@ -40,7 +43,8 @@ class HFSignTokenizer:
         )
         self.tokenizer.enable_truncation(max_length=self.max_seq_len)
         
-        self.tokenizer.save("../models/how2sign_bpe.json")
+        save_path = ROOT / "models" / "how2sign_bpe.json"
+        self.tokenizer.save(str(save_path))
         print(f"Tokenizer trained and saved. Final vocab size: {self.tokenizer.get_vocab_size()}")
         
     def encode(self, texts):
