@@ -7,59 +7,57 @@ from rouge_score import rouge_scorer
 
 from train_dataset import How2SignDataset
 from train_model import SignTranslationModel
-
-def tokenize_texts(texts):
-    """MEMBER 2 TASK: Implement text tokenization (e.g., HuggingFace tokenizer or custom vocab)."""
-    # Return padded tensor of token IDs
-    pass
-
-def decode_tokens(token_ids):
-    """MEMBER 2 TASK: Convert predicted token IDs back to strings for metric evaluation."""
-    pass
+from tokenizer import HFSignTokenizer
 
 def train_and_export_ablation(config_name, input_features, vocab_size=5000):
     print(f"\n--- Starting Ablation: {config_name} ({input_features} features) ---")
     
+    # 1. Initialize and train the Tokenizer
+    tokenizer = HFSignTokenizer(vocab_size=vocab_size, max_seq_len=50)
+    csv_path = "../data/raw/train/how2sign_train.csv"
+    tokenizer.train_from_csv(csv_path)
+    
+    # 2. Setup Dataset and Model
     dataset = How2SignDataset(data_dir="../data/processed/train", config=config_name)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
     
     model = SignTranslationModel(input_dim=input_features, vocab_size=vocab_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.CrossEntropyLoss(ignore_index=0) # Assuming 0 is padding index
+    
+    # Dynamically pull the correct padding index from the tokenizer to ignore during loss
+    pad_idx = tokenizer.tokenizer.token_to_id("[PAD]")
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
     
     # --- TRAINING LOOP ---
     model.train()
-    epochs = 5 # MEMBER 2 TASK: Tune epochs
+    epochs = 5 
     for epoch in range(epochs): 
+        epoch_loss = 0
         for batch_features, target_texts in dataloader:
             optimizer.zero_grad()
             
-            # 1. Tokenization
-            # target_tokens = tokenize_texts(target_texts) 
+            # 1. Tokenization: Convert raw text to padded tensors
+            target_tokens = tokenizer.encode(target_texts) 
             
-            # 2. Forward pass
-            # outputs = model(batch_features) 
+            # 2. Forward pass: Feed the 126, 201, or 321 features to the LSTM
+            outputs = model(batch_features) 
             
-            # 3. Compute Loss
-            # loss = criterion(outputs.view(-1, vocab_size), target_tokens.view(-1))
+            # 3. Compute Loss: Flatten predictions and targets for CrossEntropy
+            loss = criterion(outputs.view(-1, vocab_size), target_tokens.view(-1))
             
             # 4. Backpropagation
-            # loss.backward()
-            # optimizer.step()
-            pass 
+            loss.backward()
+            optimizer.step()
+            
+            epoch_loss += loss.item()
+            
+        print(f"Epoch {epoch+1}/{epochs} | Loss: {epoch_loss/len(dataloader):.4f}")
             
     # --- EVALUATION METRICS BASELINE ---
     model.eval()
     scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
     
-    # MEMBER 2 TASK: Run model on validation set, decode tokens to strings, and compute metrics.
-    # Example metric calculations:
-    # predictions = ["this is a test"]
-    # references = [["this is a test"]]
-    
-    # bleu = sacrebleu.corpus_bleu(predictions, references) # Computes BLEU 1-4
-    # wer = jiwer.wer(references[0][0], predictions[0])
-    # rouge = scorer.score(references[0][0], predictions[0])['rougeL'].fmeasure
+    # MEMBER 2 TASK: Write validation evaluation loop here using tokenizer.decode(predictions)
     
     # --- EXPORT ---
     pth_path = f"../models/{config_name}_model.pth"
