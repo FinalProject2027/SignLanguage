@@ -53,11 +53,44 @@ def train_and_export_ablation(config_name, input_features, vocab_size=5000):
             
         print(f"Epoch {epoch+1}/{epochs} | Loss: {epoch_loss/len(dataloader):.4f}")
             
-    # --- EVALUATION METRICS BASELINE ---
+    # --- EVALUATION METRICS ON VALIDATION SET ---
+    print(f"\nEvaluating {config_name} on Validation Set...")
+    
+    # Load the separate validation split
+    val_dataset = How2SignDataset(data_dir="../data/processed/validation", config=config_name)
+    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    
     model.eval()
     scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
     
-    # MEMBER 2 TASK: Write validation evaluation loop here using tokenizer.decode(predictions)
+    all_preds = []
+    all_refs = []
+    
+    with torch.no_grad():
+        for val_features, val_targets in val_dataloader:
+            # 1. Forward pass
+            outputs = model(val_features) # Shape: (batch, seq_len, vocab_size)
+            
+            # 2. Get the most likely token IDs
+            predicted_ids = torch.argmax(outputs, dim=-1) # Shape: (batch, seq_len)
+            
+            # 3. Decode token IDs back to English strings, stripping padding/EOS
+            pred_strings = tokenizer.decode(predicted_ids)
+            
+            all_preds.extend(pred_strings)
+            all_refs.extend(val_targets) # val_targets are already raw English strings
+            
+    # --- COMPUTE METRICS ---
+    # BLEU expects references as a list of lists: [[ref1, ref2, ...]]
+    bleu = sacrebleu.corpus_bleu(all_preds, [all_refs])
+    
+    # WER and ROUGE evaluate sentence pairs directly
+    wer = jiwer.wer(all_refs, all_preds)
+    rouge_scores = [scorer.score(ref, pred)['rougeL'].fmeasure for ref, pred in zip(all_refs, all_preds)]
+    avg_rouge = sum(rouge_scores) / len(rouge_scores) if rouge_scores else 0.0
+    
+    print(f"Validation Results for {config_name}:")
+    print(f"BLEU: {bleu.score:.2f} | ROUGE-L: {avg_rouge:.4f} | WER: {wer:.4f}\n")
     
     # --- EXPORT ---
     pth_path = f"../models/{config_name}_model.pth"
