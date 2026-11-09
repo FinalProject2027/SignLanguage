@@ -52,7 +52,7 @@ class FpsCounter:
 
 
 class RealtimePipeline:
-    def __init__(self, predict_fn, detector=None,
+    def __init__(self, predict_fn=None, detector=None,
                  sample_period_s=SAMPLE_PERIOD_S,
                  buffer_size=DEFAULT_BUFFER_SIZE, clock=time.perf_counter):
         self.predict_fn = predict_fn
@@ -93,6 +93,9 @@ class RealtimePipeline:
         return self._finish_sentence(t)
 
     def _finish_sentence(self, t_trigger):
+        if self.predict_fn is None:
+            return None
+
         frames = list(self.samples)
         end = len(frames) - self.detector.last_tail
         wanted = self.detector.last_length
