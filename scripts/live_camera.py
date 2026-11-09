@@ -68,8 +68,9 @@ class LandmarkBuffer:
         }
 
 
-def extract_frame_landmarks(frame, detector):
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+def extract_frame_landmarks(frame, detector, rgb_frame=None):
+    if rgb_frame is None:
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(
         image_format=mp.ImageFormat.SRGB,
         data=rgb_frame,
@@ -78,22 +79,8 @@ def extract_frame_landmarks(frame, detector):
 
     if result.pose_landmarks:
         pose_raw = get_points(result.pose_landmarks, POSE_INDICES)
-        left_shoulder = np.array(
-            [
-                result.pose_landmarks[11].x,
-                result.pose_landmarks[11].y,
-                result.pose_landmarks[11].z,
-            ],
-            dtype=np.float32,
-        )
-        right_shoulder = np.array(
-            [
-                result.pose_landmarks[12].x,
-                result.pose_landmarks[12].y,
-                result.pose_landmarks[12].z,
-            ],
-            dtype=np.float32,
-        )
+        left_shoulder = pose_raw[11]
+        right_shoulder = pose_raw[12]
         center = (left_shoulder + right_shoulder) / 2.0
         scale = max(float(np.linalg.norm(left_shoulder - right_shoulder)), 1e-6)
         pose_points = normalize_landmarks(pose_raw, center, scale)
