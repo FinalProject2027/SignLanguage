@@ -18,27 +18,28 @@ def run_integration_test():
     
     tts.start_worker()
     
-    t_capture = time.time()
+    # Use perf_counter to sync with Member 4's boundary detector
+    t_capture = time.perf_counter()
     
     # 1. Simulate Member 2's model output
     raw_output = "[SOS] THANK_YOU THANK_YOU PLEASE [EOS]"
-    t_infer = time.time()
+    t_infer = time.perf_counter()
     
-    # 2. Member 3 Processor smooths it[cite: 5]
+    # 2. Member 3 Processor smooths it
     smoothed = processor.process_sequence(raw_output)
-    t_smooth = time.time()
+    t_smooth = time.perf_counter()
     
     print(f"Raw Output: {raw_output}")
     print(f"Smoothed Text: {smoothed}")
     
-    # 3. Member 3 TTS plays it asynchronously[cite: 5]
-    t_synth = time.time()
+    # 3. Member 3 TTS plays it asynchronously
+    t_synth = time.perf_counter()
     tts.speak_async(smoothed)
     
     time.sleep(0.05) 
-    t_playback = time.time()
+    t_playback = time.perf_counter()
     
-    # 4. Log Telemetry[cite: 5]
+    # 4. Log Telemetry
     timestamps = {
         "t_capture": t_capture,
         "t_infer": t_infer,
