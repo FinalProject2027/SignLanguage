@@ -91,30 +91,30 @@ class RealtimePipeline:
         if not self.detector.update(frame.left_hand, frame.right_hand):
             return None
         return self._finish_sentence(t)
-
+    
     def _finish_sentence(self, t_trigger):
-        if self.predict_fn is None:
-            return None
-
         frames = list(self.samples)
         end = len(frames) - self.detector.last_tail
         wanted = self.detector.last_length
         start = max(0, end - wanted)
         sentence = frames[start:end]
-        arrays = {k: np.stack([getattr(f, k) for f in sentence]) for k in KEYS}
 
-        t0 = time.perf_counter()
-        text = self.predict_fn(arrays)
-        infer_s = time.perf_counter() - t0
+        text, infer_s = None, 0.0
+        if self.predict_fn is not None:
+            arrays = {k: np.stack([getattr(f, k) for f in sentence]) for k in KEYS}
+            t0 = time.perf_counter()
+            text = self.predict_fn(arrays)
+            infer_s = time.perf_counter() - t0
 
         return {
-            "text": text,
+            "text": text,                          # None when no model is set
             "n_samples": len(sentence),
             "truncated": len(sentence) < wanted,   # sentence longer than buffer
             # time between the signer's last visible hand and the trigger
             "wait_s": (t_trigger - self._last_hand_t
                        if self._last_hand_t is not None else None),
-            "L_inf_ms": infer_s * 1000.0,
+            "L_inf_ms": (infer_s * 1000.0
+                         if self.predict_fn is not None else None),
             "fps": self.fps(),
             # keys match TelemetryCollector.record_event. t_capture is the
             # moment the sentence was finalized (the trigger).
