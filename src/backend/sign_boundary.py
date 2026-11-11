@@ -29,7 +29,7 @@ class SignBoundaryDetector:
     IDLE = "IDLE"
     SIGNING = "SIGNING"
 
-    def __init__(self, start_samples=2, rest_samples=6, min_samples=8,
+    def __init__(self, start_samples=2, rest_samples=5, min_samples=5,
                  max_samples=None):
         self.start_samples = start_samples  # hand samples needed to start
         self.rest_samples = rest_samples    # empty samples needed to finish
