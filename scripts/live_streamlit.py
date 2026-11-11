@@ -1,5 +1,6 @@
 import base64
 import threading
+import time
 
 import streamlit as st
 import cv2
@@ -9,6 +10,7 @@ from mediapipe.tasks.python.core.base_options import BaseOptions
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
     VisionTaskRunningMode,
 )
+from src.backend.realtime_pipeline import RealtimePipeline
 
 if __package__:
     from .live_camera import (
@@ -29,14 +31,17 @@ else:
 
 
 class LiveCameraStream:
-    def __init__(self, capture, detector, buffer_capacity):
+    def __init__(self, capture, detector, buffer_capacity, predict_fn=None):
         self.capture = capture
         self.detector = detector
         self.landmark_buffer = LandmarkBuffer(buffer_capacity)
+        self.pipeline = RealtimePipeline(predict_fn, buffer_size=buffer_capacity)
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.latest_frame = None
         self.latest_image = None
+        self.latest_prediction = None
+        self.processing_times = (0.0, 0.0, 0.0)
         self.error = None
         self.thread = threading.Thread(target=self.process_frames, daemon=True)
 
@@ -57,18 +62,37 @@ class LiveCameraStream:
                         self.error = "Could not read a frame from the webcam."
                     break
 
-                landmarks = extract_frame_landmarks(frame, self.detector)
+                started = time.perf_counter()
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                landmarks = extract_frame_landmarks(
+                    frame,
+                    self.detector,
+                    rgb_frame,
+                )
+                landmark_time_ms = (time.perf_counter() - started) * 1000
+
+                event = self.pipeline.push(landmarks)
+                started = time.perf_counter()
                 success, encoded_frame = cv2.imencode(".jpg", frame)
+                jpeg_time_ms = (time.perf_counter() - started) * 1000
                 if not success:
                     raise RuntimeError("Could not encode the webcam frame.")
+
+                started = time.perf_counter()
+                image_data = base64.b64encode(encoded_frame).decode("ascii")
+                base64_time_ms = (time.perf_counter() - started) * 1000
 
                 with self.lock:
                     self.landmark_buffer.append(landmarks)
                     self.latest_frame = rgb_frame
-                    self.latest_image = base64.b64encode(
-                        encoded_frame
-                    ).decode("ascii")
+                    self.latest_image = image_data
+                    if event is not None:
+                        self.latest_prediction = event["text"]
+                    self.processing_times = (
+                        landmark_time_ms,
+                        jpeg_time_ms,
+                        base64_time_ms,
+                    )
         except Exception as error:
             self.error = str(error)
         finally:
@@ -101,7 +125,7 @@ def stop_camera():
         st.session_state.camera_running = False
 
 
-def start_camera():
+def start_camera(predict_fn=None):
     capture = None
     detector = None
     try:
@@ -121,6 +145,7 @@ def start_camera():
             capture,
             detector,
             st.session_state.buffer_capacity,
+            predict_fn,
         )
         stream.start()
         st.session_state.camera_stream = stream
@@ -190,6 +215,8 @@ def show_live_camera():
         error = stream.error
         frame_count = len(stream.landmark_buffer)
         buffer_capacity = stream.landmark_buffer.frames.maxlen
+        prediction = stream.latest_prediction
+        landmark_time_ms, jpeg_time_ms, base64_time_ms = stream.processing_times
 
     if error or not stream.thread.is_alive():
         st.session_state.camera_error = (
@@ -201,6 +228,14 @@ def show_live_camera():
         st.rerun()
 
     if frame is not None and image_data is not None:
+        if stream.pipeline.predict_fn is None:
+            st.info(
+                "Predictions disabled: no trained checkpoint or "
+                "predict_fn is configured."
+            )
+        elif prediction is not None:
+            st.write(f"Prediction: {prediction}")
+
         if frame is not st.session_state.last_displayed_frame:
             st.session_state.last_displayed_frame = frame
             st.session_state.last_displayed_image = image_data
@@ -210,7 +245,10 @@ def show_live_camera():
             'alt="Live camera feed" style="width: 100%; height: auto;">'
         )
         st.caption(
-            f"Buffered frames: {frame_count}/{buffer_capacity}"
+            f"Buffered frames: {frame_count}/{buffer_capacity} | "
+            f"Landmark extraction: {landmark_time_ms:.2f} ms | "
+            f"JPEG encoding: {jpeg_time_ms:.2f} ms | "
+            f"Base64 conversion: {base64_time_ms:.2f} ms"
         )
 
 
